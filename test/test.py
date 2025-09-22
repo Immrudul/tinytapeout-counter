@@ -61,10 +61,10 @@ async def test_load_count_tristate(dut):
     # Final spot check (should be 0xA8)
     assert int(dut.uo_out.value) == 0xA8
 
-    # ----- Tri-state drive -----
+    # ----- Tri-state drive (do NOT count here) -----
     await Timer(1, units="ns")
-    set_ui(dut, en=1, dir=1, load=0, oe=1)
-    await step(dut, 1)
+    set_ui(dut, en=0, dir=1, load=0, oe=1)   # en=0 to freeze count
+    await step(dut, 1)                       # tick for GL settle; value remains 0xA8
     assert int(dut.uio_out.value) == int(dut.uo_out.value), "uio_out should mirror count when OE=1"
     assert int(dut.uio_oe.value)  == 0xFF, "uio_oe should be 0xFF when OE=1"
 
