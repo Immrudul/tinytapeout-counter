@@ -12,8 +12,7 @@ async def tick(dut, n=1):
     """Advance n rising clock edges, then wait a tiny time for signals to settle."""
     for _ in range(n):
         await RisingEdge(dut.clk)
-    # Small delay so registered outputs are visible to cocotb after the edge
-    await Timer(1, units="ns")
+        await Timer(1, units="ns")
 
 
 @cocotb.test()
