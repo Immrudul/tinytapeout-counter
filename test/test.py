@@ -9,11 +9,15 @@ def set_ui(dut, en=0, dir=1, load=0, oe=0):
 
 
 async def step(dut, cycles=1):
-    """Advance 'cycles' rising edges and then sample after HDL settles."""
+    """
+    Advance 'cycles' rising edges and then sample after HDL settles.
+    In GL sim, primitives use UNIT_DELAY=#1 (timescale 1ns/1ps), so we
+    wait 1 ns after the edge before ReadOnly to let signals propagate.
+    """
     for _ in range(cycles):
         await RisingEdge(dut.clk)
-    # NOTE: After this returns we are in ReadOnly phase.
-    await ReadOnly()
+        await Timer(1, units="ns")  # allow #1 unit delay to settle (safe for RTL too)
+    await ReadOnly()                # sample after NBAs & delays
 
 
 @cocotb.test()
