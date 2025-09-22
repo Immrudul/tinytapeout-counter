@@ -1,40 +1,46 @@
-# SPDX-FileCopyrightText: © 2024 Tiny Tapeout
-# SPDX-License-Identifier: Apache-2.0
-
 import cocotb
+from cocotb.triggers import RisingEdge, Timer
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles
 
+def set_ui(dut, en=0, dir=1, load=0, oe=0):
+    dut.ui_in.value = (oe << 3) | (load << 2) | (dir << 1) | en
 
 @cocotb.test()
-async def test_project(dut):
-    dut._log.info("Start")
-
-    # Set the clock period to 10 us (100 KHz)
-    clock = Clock(dut.clk, 10, units="us")
-    cocotb.start_soon(clock.start())
+async def test_load_count_tristate(dut):
+    # 10 MHz clock (100 ns period)
+    cocotb.start_soon(Clock(dut.clk, 100, units="ns").start())
 
     # Reset
-    dut._log.info("Reset")
-    dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
     dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
+    dut.ena.value   = 1
+    dut.uio_in.value = 0
+    dut.ui_in.value  = 0
+    await Timer(1, units="us")
     dut.rst_n.value = 1
+    await RisingEdge(dut.clk)
 
-    dut._log.info("Test project behavior")
+    # 1) Sync load 0xA5 from uio_in
+    dut.uio_in.value = 0xA5
+    set_ui(dut, en=0, dir=1, load=1, oe=0)
+    await RisingEdge(dut.clk)   # load happens here
+    set_ui(dut, en=0, dir=1, load=0, oe=0)
+    await RisingEdge(dut.clk)
+    assert int(dut.uo_out.value) == 0xA5
 
-    # Set the input values you want to test
-    dut.ui_in.value = 20
-    dut.uio_in.value = 30
+    # 2) Count up 3 cycles → 0xA8
+    set_ui(dut, en=1, dir=1, load=0, oe=0)
+    for _ in range(3):
+        await RisingEdge(dut.clk)
+    assert int(dut.uo_out.value) == 0xA8
 
-    # Wait for one clock cycle to see the output values
-    await ClockCycles(dut.clk, 1)
+    # 3) Drive tri-state bus
+    set_ui(dut, en=1, dir=1, load=0, oe=1)
+    await RisingEdge(dut.clk)
+    assert int(dut.uio_out.value) == int(dut.uo_out.value)
+    assert int(dut.uio_oe.value)  == 0xFF
 
-    # The following assersion is just an example of how to check the output values.
-    # Change it to match the actual expected output of your module:
-    assert dut.uo_out.value == 50
-
-    # Keep testing the module by changing the input values, waiting for
-    # one or more clock cycles, and asserting the expected output values.
+    # 4) Count down 5 → 0xA3
+    set_ui(dut, en=1, dir=0, load=0, oe=1)
+    for _ in range(5):
+        await RisingEdge(dut.clk)
+    assert int(dut.uo_out.value) == 0xA3
