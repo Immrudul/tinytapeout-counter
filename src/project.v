@@ -1,27 +1,55 @@
-/*
- * Copyright (c) 2024 Your Name
- * SPDX-License-Identifier: Apache-2.0
- */
+// 8-bit programmable counter with synchronous load and tri-state bus
+// Tiny Tapeout user module interface
+// Top must be named exactly as info.yaml: tt_um_immrudul_counter
 
-`default_nettype none
-
-module tt_um_example (
-    input  wire [7:0] ui_in,    // Dedicated inputs
-    output wire [7:0] uo_out,   // Dedicated outputs
-    input  wire [7:0] uio_in,   // IOs: Input path
-    output wire [7:0] uio_out,  // IOs: Output path
-    output wire [7:0] uio_oe,   // IOs: Enable path (active high: 0=input, 1=output)
-    input  wire       ena,      // always 1 when the design is powered, so you can ignore it
-    input  wire       clk,      // clock
-    input  wire       rst_n     // reset_n - low to reset
+module tt_um_immrudul_counter (
+    // TT standard ports
+    input  wire [7:0] ui_in,     // dedicated inputs
+    output wire [7:0] uo_out,    // dedicated outputs
+    input  wire [7:0] uio_in,    // bidir in
+    output wire [7:0] uio_out,   // bidir out
+    output wire [7:0] uio_oe,    // bidir oe (1=drive)
+    input  wire       ena,       // design enable (from harness)
+    input  wire       clk,       // clock
+    input  wire       rst_n      // async active-low reset
 );
 
-  // All output pins must be assigned. If not used, assign to 0.
-  assign uo_out  = ui_in + uio_in;  // Example: ou_out is the sum of ui_in and uio_in
-  assign uio_out = 0;
-  assign uio_oe  = 0;
+    // Control bits
+    wire en    = ui_in[0];  // count enable
+    wire dir   = ui_in[1];  // 1=up, 0=down
+    wire load  = ui_in[2];  // synchronous load from uio_in
+    wire oe    = ui_in[3];  // drive uio_out bus when 1
 
-  // List all unused inputs to prevent warnings
-  wire _unused = &{ena, clk, rst_n, 1'b0};
+    // Counter register
+    reg [7:0] count;
+
+    // Next-state logic for increment/decrement
+    wire [7:0] inc = count + 8'd1;
+    wire [7:0] dec = count - 8'd1;
+
+    // Synchronous state update
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            count <= 8'h00;
+        end else if (!ena) begin
+            // When harness de-asserts ena, hold state
+            count <= count;
+        end else if (load) begin
+            // Sync load from tri-state input bus
+            count <= uio_in;
+        end else if (en) begin
+            count <= dir ? inc : dec;
+        end
+        // else hold
+    end
+
+    // Always mirror the count to the dedicated outputs for visibility
+    assign uo_out = count;
+
+    // Tri-state bus behavior:
+    // - When OE=1, drive the counter value onto the bus.
+    // - When OE=0, high-Z (by deasserting oe bits, uio_out value is ignored).
+    assign uio_out = count;
+    assign uio_oe  = {8{oe}};
 
 endmodule
